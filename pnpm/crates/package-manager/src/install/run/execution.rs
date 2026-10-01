@@ -1,12 +1,13 @@
 use super::{
     super::{
-        ApplyMaterializationInputs, Arc, AtomicU8, IncludedDependencies, InstallError, LogEvent,
-        LogLevel, MaterializationInputs, PackageManifest, PathBuf, RebuildOptions, Reporter,
-        SummaryLog, apply_materialization_result, materialize, prior_hoisted_dependencies,
+        ApplyMaterializationInputs, Arc, AtomicU8, IncludedDependencies, InstallError,
+        MaterializationInputs, PackageManifest, PathBuf, RebuildOptions, Reporter,
+        apply_materialization_result, materialize, prior_hoisted_dependencies,
         prior_hoisted_locations,
     },
     Dispatched, InstallRunOutcome, InstallScope, Loaded, Lockfiles, RunExecution, Settled,
-    Verification, dispatch, load_lockfiles, settle_wanted_lockfile,
+    Verification, dispatch, load_lockfiles, pnpmfile_hook_override_changed,
+    report_already_up_to_date, settle_wanted_lockfile,
     time_machine_capture::capture_time_machine_exclusions,
     workspace_projects,
 };
@@ -28,17 +29,20 @@ impl<'a> RunExecution<'a> {
     ) -> Result<InstallRunOutcome, InstallError> {
         let scope = self.select_scope();
         capture_time_machine_exclusions(&self, &scope, time_machine_exclusions);
-        if scope.is_already_up_to_date::<Reporter>(
-            self.install,
-            &self.owned,
-            &self.mode,
-            &self.workspace,
-        )? {
-            Reporter::emit(&LogEvent::Summary(SummaryLog {
-                level: LogLevel::Debug,
-                prefix: self.workspace.prefix,
-            }));
-            return Ok(InstallRunOutcome::AlreadyUpToDate);
+        let hook_override_changed = pnpmfile_hook_override_changed(
+            self.owned.projects.pnpmfile_hook_override.clone(),
+            self.install.context.lockfile,
+        )
+        .await;
+        if !hook_override_changed
+            && scope.is_already_up_to_date::<Reporter>(
+                self.install,
+                &self.owned,
+                &self.mode,
+                &self.workspace,
+            )?
+        {
+            return Ok(report_already_up_to_date::<Reporter>(self.workspace.prefix));
         }
         let mut loaded = load_lockfiles::<Reporter>(
             self.install,

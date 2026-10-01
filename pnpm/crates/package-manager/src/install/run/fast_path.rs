@@ -1,6 +1,6 @@
 use super::super::{
     Host, InstallError, LogEvent, LogLevel, OptimisticRepeatInstallCheck,
-    OptimisticRepeatInstallDecision, PnpmLog, Reporter, UpdateSeedPolicy,
+    OptimisticRepeatInstallDecision, PnpmLog, Reporter, SummaryLog, UpdateSeedPolicy,
     check_optimistic_repeat_install, gvs_build_marker_present,
     gvs_build_markers_may_require_recovery, unapproved_recorded_ignored_builds,
 };
@@ -117,4 +117,31 @@ pub(super) fn build_state_allows_short_circuit(
         Ok(None) => Ok(true),
         Err(_) => Ok(false),
     }
+}
+
+/// Whether an embedder's in-memory hooks would record a different
+/// `pnpmfileChecksum` than the wanted lockfile holds. The repeat-install
+/// check detects a changed pnpmfile by its mtime, which in-memory hooks do
+/// not have. An unreadable lockfile counts as changed. A missing one leaves
+/// nothing to compare.
+pub(super) async fn pnpmfile_hook_override_changed(
+    hooks: Option<std::sync::Arc<dyn pnpm_hooks::PnpmfileHooks>>,
+    lockfile: pnpm_lockfile::MaybeLazyLockfile<'_>,
+) -> bool {
+    let Some(hooks) = hooks else { return false };
+    let recorded = match lockfile.get() {
+        Ok(Some(lockfile)) => lockfile.pnpmfile_checksum.clone(),
+        Ok(None) => return false,
+        Err(_) => return true,
+    };
+    recorded != hooks.calculate_pnpmfile_checksum().await
+}
+
+/// Emits the install summary for a run the repeat-install fast path
+/// finished.
+pub(super) fn report_already_up_to_date<Reporter: self::Reporter>(
+    prefix: String,
+) -> super::InstallRunOutcome {
+    Reporter::emit(&LogEvent::Summary(SummaryLog { level: LogLevel::Debug, prefix }));
+    super::InstallRunOutcome::AlreadyUpToDate
 }
