@@ -296,7 +296,8 @@ pub struct ChecksummedHooks {
 }
 
 impl ChecksummedHooks {
-    /// `hooks` as they are when no checksum is given.
+    /// Wraps `hooks` when the host gave a checksum. Without one, `hooks` stay
+    /// untracked.
     pub fn wrap(
         hooks: Option<Arc<dyn PnpmfileHooks>>,
         checksum: Option<&str>,
