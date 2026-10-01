@@ -140,3 +140,19 @@ fn read_package_hook_without_a_checksum_resolves_every_dependency_again() {
         "an untracked hook cannot vouch for the lockfile",
     );
 }
+
+#[test]
+fn adding_an_untracked_read_package_hook_resolves_again() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let options = hooked_install_options(temp_dir.path(), &[FOO], None);
+    run_install_inner(&options, None, EngineMode::Install(None)).expect("install without a hook");
+    assert!(!read_lockfile(&options).contains("untrackedPnpmfileReadPackageHook"));
+
+    assert!(
+        install_with_hook(&options)
+            .iter()
+            .any(|name| name == FOO),
+        "a hook the lockfile does not record has to be applied",
+    );
+    assert!(read_lockfile(&options).contains("untrackedPnpmfileReadPackageHook: true"));
+}

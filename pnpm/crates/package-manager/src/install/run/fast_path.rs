@@ -119,22 +119,30 @@ pub(super) fn build_state_allows_short_circuit(
     }
 }
 
-/// Whether an embedder's in-memory hooks would record a different
-/// `pnpmfileChecksum` than the wanted lockfile holds. The repeat-install
-/// check detects a changed pnpmfile by its mtime, which in-memory hooks do
-/// not have. An unreadable lockfile counts as changed. A missing one leaves
-/// nothing to compare.
+/// Whether an embedder's in-memory hooks differ from the ones the wanted
+/// lockfile records: a different `pnpmfileChecksum`, or an untracked
+/// `readPackage` hook that appeared or went away. The repeat-install check
+/// detects a changed pnpmfile by its mtime, which in-memory hooks do not
+/// have. An unchanged untracked hook does not count, as an unchanged
+/// pnpmfile does not. An unreadable lockfile or hook counts as changed. A
+/// missing lockfile leaves nothing to compare.
 pub(super) async fn pnpmfile_hook_override_changed(
     hooks: Option<std::sync::Arc<dyn pnpm_hooks::PnpmfileHooks>>,
     lockfile: pnpm_lockfile::MaybeLazyLockfile<'_>,
 ) -> bool {
     let Some(hooks) = hooks else { return false };
-    let recorded = match lockfile.get() {
-        Ok(Some(lockfile)) => lockfile.pnpmfile_checksum.clone(),
+    let (recorded_checksum, recorded_untracked) = match lockfile.get() {
+        Ok(Some(lockfile)) => {
+            (lockfile.pnpmfile_checksum.clone(), lockfile.untracked_pnpmfile_read_package_hook())
+        }
         Ok(None) => return false,
         Err(_) => return true,
     };
-    recorded != hooks.calculate_pnpmfile_checksum().await
+    recorded_checksum != hooks.calculate_pnpmfile_checksum().await
+        || hooks
+            .untracked_read_package_hook()
+            .await
+            .map_or(true, |current| current != recorded_untracked)
 }
 
 /// Emits the install summary for a run the repeat-install fast path
