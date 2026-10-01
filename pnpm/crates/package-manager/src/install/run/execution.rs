@@ -29,18 +29,12 @@ impl<'a> RunExecution<'a> {
     ) -> Result<InstallRunOutcome, InstallError> {
         let scope = self.select_scope();
         capture_time_machine_exclusions(&self, &scope, time_machine_exclusions);
-        let hook_override_changed = pnpmfile_hook_override_changed(
-            self.owned.projects.pnpmfile_hook_override.clone(),
-            self.install.context.lockfile,
-        )
-        .await;
-        if !hook_override_changed
-            && scope.is_already_up_to_date::<Reporter>(
-                self.install,
-                &self.owned,
-                &self.mode,
-                &self.workspace,
-            )?
+        if scope.is_already_up_to_date(self.install, &self.owned, &self.mode, &self.workspace)?
+            && !pnpmfile_hook_override_changed(
+                self.owned.projects.pnpmfile_hook_override.clone(),
+                self.install.context.lockfile,
+            )
+            .await
         {
             return Ok(report_already_up_to_date::<Reporter>(self.workspace.prefix));
         }

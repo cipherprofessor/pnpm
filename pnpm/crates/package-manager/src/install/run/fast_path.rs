@@ -13,7 +13,6 @@ pub(super) struct UpToDateCheck<'a> {
     pub(super) frozen_lockfile: bool,
     pub(super) disable_optimistic_repeat_install: bool,
     pub(super) effective_node_version: Option<&'a str>,
-    pub(super) prefix: &'a str,
 }
 /// Whether nothing has changed since the previous successful install
 /// (settings, workspace structure, manifest mtimes), so the whole pipeline can
@@ -38,7 +37,7 @@ pub(super) struct UpToDateCheck<'a> {
 /// subset is selected), and it refuses a workspace state a filtered install
 /// wrote, so "nothing changed" still means every selected project is
 /// materialized.
-pub(super) fn install_is_already_up_to_date<Reporter: self::Reporter>(
+pub(super) fn install_is_already_up_to_date(
     check: &UpToDateCheck<'_>,
 ) -> Result<bool, InstallError> {
     let eligible = check.mutation.is_full_install()
@@ -59,15 +58,7 @@ pub(super) fn install_is_already_up_to_date<Reporter: self::Reporter>(
         );
         return Ok(false);
     }
-    if !build_state_allows_short_circuit(check)? {
-        return Ok(false);
-    }
-    Reporter::emit(&LogEvent::Pnpm(PnpmLog {
-        level: LogLevel::Info,
-        message: "Already up to date".to_string(),
-        prefix: check.prefix.to_string(),
-    }));
-    Ok(true)
+    build_state_allows_short_circuit(check)
 }
 /// Whether the recorded build state lets the fast path stand.
 ///
@@ -145,11 +136,15 @@ pub(super) async fn pnpmfile_hook_override_changed(
             .map_or(true, |current| current != recorded_untracked)
 }
 
-/// Emits the install summary for a run the repeat-install fast path
-/// finished.
+/// Reports a run the repeat-install fast path finished.
 pub(super) fn report_already_up_to_date<Reporter: self::Reporter>(
     prefix: String,
 ) -> super::InstallRunOutcome {
+    Reporter::emit(&LogEvent::Pnpm(PnpmLog {
+        level: LogLevel::Info,
+        message: "Already up to date".to_string(),
+        prefix: prefix.clone(),
+    }));
     Reporter::emit(&LogEvent::Summary(SummaryLog { level: LogLevel::Debug, prefix }));
     super::InstallRunOutcome::AlreadyUpToDate
 }
